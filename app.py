@@ -1,5 +1,6 @@
 import os
 import base64
+import json
 import random
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
@@ -67,6 +68,59 @@ def _current_user(session: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
     return None
 
 
+def _qp_get(name: str) -> Optional[str]:
+    try:
+        v = st.query_params.get(name)
+    except Exception:
+        return None
+    if v is None:
+        return None
+    if isinstance(v, list):
+        return str(v[0]) if v else None
+    return str(v)
+
+
+def _jwt_payload(token: str) -> Dict[str, Any]:
+    try:
+        parts = (token or "").split(".")
+        if len(parts) < 2:
+            return {}
+        payload_b64 = parts[1]
+        payload_b64 += "=" * (-len(payload_b64) % 4)
+        raw = base64.urlsafe_b64decode(payload_b64.encode("utf-8"))
+        return json.loads(raw.decode("utf-8"))
+    except Exception:
+        return {}
+
+
+def _session_from_tokens(access_token: str, refresh_token: str) -> Dict[str, Any]:
+    payload = _jwt_payload(access_token)
+    user_id = payload.get("sub")
+    email = payload.get("email")
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user": {"id": user_id, "email": email},
+    }
+
+
+def _maybe_restore_session_from_query_params() -> None:
+    if st.session_state.get("sb_session"):
+        return
+    at = _qp_get("at")
+    rt = _qp_get("rt")
+    if at and rt:
+        st.session_state["sb_session"] = _session_from_tokens(at, rt)
+        st.rerun()
+
+def _set_auth_query_params(access_token: str, refresh_token: str) -> None:
+    try:
+        st.query_params["at"] = access_token
+        st.query_params["rt"] = refresh_token
+    except Exception:
+        pass
+
+
 def _sign_in(email: str, password: str) -> None:
     client = _create_client(None)
     res = client.auth.sign_in_with_password({"email": email, "password": password})
@@ -79,6 +133,7 @@ def _sign_in(email: str, password: str) -> None:
         "refresh_token": session.refresh_token,
         "user": {"id": user.id, "email": user.email},
     }
+    _set_auth_query_params(session.access_token, session.refresh_token)
 
 
 def _sign_up(email: str, password: str) -> bool:
@@ -92,6 +147,7 @@ def _sign_up(email: str, password: str) -> bool:
             "refresh_token": session.refresh_token,
             "user": {"id": user.id, "email": user.email},
         }
+        _set_auth_query_params(session.access_token, session.refresh_token)
         return True
     return False
 
@@ -99,6 +155,11 @@ def _sign_up(email: str, password: str) -> bool:
 def _logout() -> None:
     st.session_state.pop("sb_session", None)
     st.session_state.pop("selected_set_id", None)
+    st.session_state.pop("selected_set_name", None)
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
     st.rerun()
 
 
@@ -271,6 +332,7 @@ st.set_page_config(page_title="WordPlay", page_icon="📚", layout="centered")
 _apply_mobile_css()
 
 st.title("WordPlay")
+_maybe_restore_session_from_query_params()
 session = st.session_state.get("sb_session")
 user = _current_user(session)
 
