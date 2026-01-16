@@ -290,36 +290,55 @@ def _apply_mobile_css() -> None:
     st.markdown(
         """
         <style>
-          .block-container { padding-top: 1rem; padding-bottom: 4rem; }
+          .block-container { padding-top: 1rem; padding-bottom: 6.5rem; }
           div[data-testid="stForm"] { border: 1px solid rgba(49, 51, 63, 0.2); padding: 0.75rem; border-radius: 0.75rem; }
           div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea, div[data-testid="stSelectbox"] div { font-size: 16px; }
           div[data-testid="stAudio"] { width: 100%; }
           .fc-controls-marker + div[data-testid="stHorizontalBlock"],
           .fcr-controls-marker + div[data-testid="stHorizontalBlock"] {
-            display: flex;
+            display: flex !important;
+            flex-direction: row !important;
             flex-wrap: nowrap !important;
+            align-items: stretch !important;
             gap: 4px !important;
-            width: 100%;
-            margin: 1.25rem 0 0.75rem 0;
+            width: 100% !important;
+            margin: 0 !important;
+            position: fixed !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            bottom: 0 !important;
+            z-index: 1000 !important;
+            max-width: 700px !important;
+            width: min(700px, calc(100% - 1.5rem)) !important;
+            padding: 0.5rem 0.5rem 0.75rem 0.5rem !important;
+            background: rgba(17, 17, 17, 0.88) !important;
+            border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-top-left-radius: 0.75rem !important;
+            border-top-right-radius: 0.75rem !important;
           }
           .fc-controls-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
           .fcr-controls-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
             min-width: 0 !important;
             flex: 1 1 0 !important;
+            width: 33.333% !important;
+            max-width: 33.333% !important;
           }
           .fc-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button,
           .fcr-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button {
             width: 100% !important;
             white-space: nowrap !important;
-            padding: 0.55rem 0.4rem;
-            font-size: 16px;
+            padding: clamp(6px, 1.4vw, 9px) clamp(4px, 1.2vw, 7px);
+            font-size: clamp(12px, 3.2vw, 16px);
+            line-height: 1.1;
           }
           @media (max-width: 640px) {
             .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
             .fc-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button,
             .fcr-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button {
-              padding: 0.5rem 0.35rem;
-              font-size: 15px;
+              padding: 0.45rem 0.25rem;
+              font-size: 12px;
             }
           }
         </style>
@@ -742,23 +761,6 @@ with flash_tab:
         fc_index = len(words_fc) - 1
     st.session_state["fc_index"] = fc_index
 
-    st.markdown('<div class="fc-controls-marker"></div>', unsafe_allow_html=True)
-    col_prev, col_answer, col_next = st.columns(3)
-    with col_prev:
-        if st.button("이전", key="fc_prev", use_container_width=True):
-            st.session_state["fc_index"] = max(0, fc_index - 1)
-            st.session_state["fc_revealed"] = False
-            st.rerun()
-    with col_answer:
-        if st.button("정답", key="fc_answer", use_container_width=True):
-            st.session_state["fc_revealed"] = True
-            st.rerun()
-    with col_next:
-        if st.button("다음", key="fc_next", use_container_width=True):
-            st.session_state["fc_index"] = min(len(words_fc) - 1, fc_index + 1)
-            st.session_state["fc_revealed"] = False
-            st.rerun()
-
     current = words_fc[fc_index]
     word_text = (current.get("word") or "").strip()
     meaning_text = str(current.get("meaning") or "").strip()
@@ -786,6 +788,23 @@ with flash_tab:
             """,
             unsafe_allow_html=True,
         )
+
+    st.markdown('<div class="fc-controls-marker"></div>', unsafe_allow_html=True)
+    col_prev, col_answer, col_next = st.columns(3)
+    with col_prev:
+        if st.button("이전", key="fc_prev", use_container_width=True):
+            st.session_state["fc_index"] = max(0, fc_index - 1)
+            st.session_state["fc_revealed"] = False
+            st.rerun()
+    with col_answer:
+        if st.button("정답", key="fc_answer", use_container_width=True):
+            st.session_state["fc_revealed"] = True
+            st.rerun()
+    with col_next:
+        if st.button("다음", key="fc_next", use_container_width=True):
+            st.session_state["fc_index"] = min(len(words_fc) - 1, fc_index + 1)
+            st.session_state["fc_revealed"] = False
+            st.rerun()
 
 with flash_random_tab:
     st.subheader("플래시카드(랜덤)")
@@ -828,23 +847,6 @@ with flash_random_tab:
         fcr_index = len(words_r) - 1
     st.session_state["fcr_index"] = fcr_index
 
-    st.markdown('<div class="fcr-controls-marker"></div>', unsafe_allow_html=True)
-    col_prev_r, col_answer_r, col_next_r = st.columns(3)
-    with col_prev_r:
-        if st.button("이전", key="fcr_prev", use_container_width=True):
-            st.session_state["fcr_index"] = max(0, fcr_index - 1)
-            st.session_state["fcr_revealed"] = False
-            st.rerun()
-    with col_answer_r:
-        if st.button("정답", key="fcr_answer", use_container_width=True):
-            st.session_state["fcr_revealed"] = True
-            st.rerun()
-    with col_next_r:
-        if st.button("다음", key="fcr_next", use_container_width=True):
-            st.session_state["fcr_index"] = min(len(words_r) - 1, fcr_index + 1)
-            st.session_state["fcr_revealed"] = False
-            st.rerun()
-
     current_r = words_r[fcr_index]
     word_text_r = (current_r.get("word") or "").strip()
     meaning_text_r = str(current_r.get("meaning") or "").strip()
@@ -871,4 +873,21 @@ with flash_random_tab:
             """,
             unsafe_allow_html=True,
         )
+
+    st.markdown('<div class="fcr-controls-marker"></div>', unsafe_allow_html=True)
+    col_prev_r, col_answer_r, col_next_r = st.columns(3)
+    with col_prev_r:
+        if st.button("이전", key="fcr_prev", use_container_width=True):
+            st.session_state["fcr_index"] = max(0, fcr_index - 1)
+            st.session_state["fcr_revealed"] = False
+            st.rerun()
+    with col_answer_r:
+        if st.button("정답", key="fcr_answer", use_container_width=True):
+            st.session_state["fcr_revealed"] = True
+            st.rerun()
+    with col_next_r:
+        if st.button("다음", key="fcr_next", use_container_width=True):
+            st.session_state["fcr_index"] = min(len(words_r) - 1, fcr_index + 1)
+            st.session_state["fcr_revealed"] = False
+            st.rerun()
 
