@@ -233,11 +233,33 @@ def _apply_mobile_css() -> None:
           div[data-testid="stForm"] { border: 1px solid rgba(49, 51, 63, 0.2); padding: 0.75rem; border-radius: 0.75rem; }
           div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea, div[data-testid="stSelectbox"] div { font-size: 16px; }
           div[data-testid="stAudio"] { width: 100%; }
-          .fc-row { display: flex; flex-wrap: nowrap; gap: 4px; width: 100%; margin: 1.25rem 0 0.75rem 0; }
-          .fc-row .fc-btn { flex: 1 1 0; width: 100%; padding: 0.55rem 0.4rem; font-size: 16px; white-space: nowrap; }
+          .fc-controls-marker + div[data-testid="stHorizontalBlock"],
+          .fcr-controls-marker + div[data-testid="stHorizontalBlock"] {
+            display: flex;
+            flex-wrap: nowrap !important;
+            gap: 4px !important;
+            width: 100%;
+            margin: 1.25rem 0 0.75rem 0;
+          }
+          .fc-controls-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+          .fcr-controls-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+            min-width: 0 !important;
+            flex: 1 1 0 !important;
+          }
+          .fc-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button,
+          .fcr-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button {
+            width: 100% !important;
+            white-space: nowrap !important;
+            padding: 0.55rem 0.4rem;
+            font-size: 16px;
+          }
           @media (max-width: 640px) {
             .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
-            .fc-row .fc-btn { padding: 0.5rem 0.35rem; font-size: 15px; }
+            .fc-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button,
+            .fcr-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button {
+              padding: 0.5rem 0.35rem;
+              font-size: 15px;
+            }
           }
         </style>
         """,
@@ -658,72 +680,22 @@ with flash_tab:
         fc_index = len(words_fc) - 1
     st.session_state["fc_index"] = fc_index
 
-    st.markdown(
-        """
-        <div class="fc-row">
-          <button id="fc_prev_btn" class="fc-btn">이전</button>
-          <button id="fc_answer_btn" class="fc-btn">정답</button>
-          <button id="fc_next_btn" class="fc-btn">다음</button>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div id="fc_hidden_buttons">', unsafe_allow_html=True)
-    col_prev_hidden, col_answer_hidden, col_next_hidden = st.columns([1, 1, 1])
-    with col_prev_hidden:
-        if st.button("[FC_PREV]", key="fc_prev_native"):
+    st.markdown('<div class="fc-controls-marker"></div>', unsafe_allow_html=True)
+    col_prev, col_answer, col_next = st.columns(3)
+    with col_prev:
+        if st.button("이전", key="fc_prev", use_container_width=True):
             st.session_state["fc_index"] = max(0, fc_index - 1)
             st.session_state["fc_revealed"] = False
             st.rerun()
-    with col_answer_hidden:
-        if st.button("[FC_ANSWER]", key="fc_answer_native"):
+    with col_answer:
+        if st.button("정답", key="fc_answer", use_container_width=True):
             st.session_state["fc_revealed"] = True
             st.rerun()
-    with col_next_hidden:
-        if st.button("[FC_NEXT]", key="fc_next_native"):
+    with col_next:
+        if st.button("다음", key="fc_next", use_container_width=True):
             st.session_state["fc_index"] = min(len(words_fc) - 1, fc_index + 1)
             st.session_state["fc_revealed"] = False
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <script>
-        (function(){
-          function clickHidden(label){
-            var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-            var target = btns.find(function(b){
-              return (b.innerText || '').trim() === label;
-            });
-            if(target){ target.click(); }
-          }
-          function hideLabel(label){
-            var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-            btns.forEach(function(b){
-              if((b.innerText || '').trim() === label){
-                var wrap = b.closest('.stButton') || b.parentElement;
-                if(wrap){
-                  wrap.style.display = 'none';
-                  wrap.style.height = '0px';
-                  wrap.style.margin = '0';
-                  wrap.style.padding = '0';
-                }
-              }
-            });
-          }
-          ['[FC_PREV]','[FC_ANSWER]','[FC_NEXT]'].forEach(hideLabel);
-          var p = document.getElementById('fc_prev_btn');
-          var a = document.getElementById('fc_answer_btn');
-          var n = document.getElementById('fc_next_btn');
-          if(p){ p.onclick = function(){ clickHidden('[FC_PREV]'); }; }
-          if(a){ a.onclick = function(){ clickHidden('[FC_ANSWER]'); }; }
-          if(n){ n.onclick = function(){ clickHidden('[FC_NEXT]'); }; }
-        })();
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
 
     current = words_fc[fc_index]
     word_text = (current.get("word") or "").strip()
@@ -794,72 +766,22 @@ with flash_random_tab:
         fcr_index = len(words_r) - 1
     st.session_state["fcr_index"] = fcr_index
 
-    st.markdown(
-        """
-        <div class="fc-row">
-          <button id="fcr_prev_btn" class="fc-btn">이전</button>
-          <button id="fcr_answer_btn" class="fc-btn">정답</button>
-          <button id="fcr_next_btn" class="fc-btn">다음</button>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div id="fcr_hidden_buttons">', unsafe_allow_html=True)
-    col_prev_r_hidden, col_answer_r_hidden, col_next_r_hidden = st.columns([1, 1, 1])
-    with col_prev_r_hidden:
-        if st.button("[FCR_PREV]", key="fcr_prev_native"):
+    st.markdown('<div class="fcr-controls-marker"></div>', unsafe_allow_html=True)
+    col_prev_r, col_answer_r, col_next_r = st.columns(3)
+    with col_prev_r:
+        if st.button("이전", key="fcr_prev", use_container_width=True):
             st.session_state["fcr_index"] = max(0, fcr_index - 1)
             st.session_state["fcr_revealed"] = False
             st.rerun()
-    with col_answer_r_hidden:
-        if st.button("[FCR_ANSWER]", key="fcr_answer_native"):
+    with col_answer_r:
+        if st.button("정답", key="fcr_answer", use_container_width=True):
             st.session_state["fcr_revealed"] = True
             st.rerun()
-    with col_next_r_hidden:
-        if st.button("[FCR_NEXT]", key="fcr_next_native"):
+    with col_next_r:
+        if st.button("다음", key="fcr_next", use_container_width=True):
             st.session_state["fcr_index"] = min(len(words_r) - 1, fcr_index + 1)
             st.session_state["fcr_revealed"] = False
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <script>
-        (function(){
-          function clickHidden(label){
-            var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-            var target = btns.find(function(b){
-              return (b.innerText || '').trim() === label;
-            });
-            if(target){ target.click(); }
-          }
-          function hideLabel(label){
-            var btns = Array.prototype.slice.call(document.querySelectorAll('button'));
-            btns.forEach(function(b){
-              if((b.innerText || '').trim() === label){
-                var wrap = b.closest('.stButton') || b.parentElement;
-                if(wrap){
-                  wrap.style.display = 'none';
-                  wrap.style.height = '0px';
-                  wrap.style.margin = '0';
-                  wrap.style.padding = '0';
-                }
-              }
-            });
-          }
-          ['[FCR_PREV]','[FCR_ANSWER]','[FCR_NEXT]'].forEach(hideLabel);
-          var p = document.getElementById('fcr_prev_btn');
-          var a = document.getElementById('fcr_answer_btn');
-          var n = document.getElementById('fcr_next_btn');
-          if(p){ p.onclick = function(){ clickHidden('[FCR_PREV]'); }; }
-          if(a){ a.onclick = function(){ clickHidden('[FCR_ANSWER]'); }; }
-          if(n){ n.onclick = function(){ clickHidden('[FCR_NEXT]'); }; }
-        })();
-        </script>
-        """,
-        unsafe_allow_html=True,
-    )
 
     current_r = words_r[fcr_index]
     word_text_r = (current_r.get("word") or "").strip()
