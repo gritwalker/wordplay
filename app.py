@@ -2,6 +2,7 @@ import os
 import base64
 import json
 import random
+import secrets
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -156,6 +157,7 @@ def _logout() -> None:
     st.session_state.pop("sb_session", None)
     st.session_state.pop("selected_set_id", None)
     st.session_state.pop("selected_set_name", None)
+    st.session_state.pop("selected_set_name_display", None)
     try:
         st.query_params.clear()
     except Exception:
@@ -436,26 +438,26 @@ except Exception as e:
 set_options = {s["name"]: s["id"] for s in sets if s.get("id") and s.get("name")}
 set_names = list(set_options.keys())
 
-selected_set_name = st.session_state.get("selected_set_name")
 selected_set_id = st.session_state.get("selected_set_id")
+selected_set_name_display = st.session_state.get("selected_set_name_display") or st.session_state.get("selected_set_name")
 pref_set_id = None
 if isinstance(user_pref, dict):
     pref_set_id = user_pref.get("last_set_id")
-if selected_set_name and selected_set_name in set_options:
-    selected_set_id = set_options[selected_set_name]
+if selected_set_name_display and selected_set_name_display in set_options:
+    selected_set_id = set_options[selected_set_name_display]
     st.session_state["selected_set_id"] = selected_set_id
 elif not selected_set_id and pref_set_id and pref_set_id in set_options.values():
     selected_set_id = pref_set_id
     st.session_state["selected_set_id"] = pref_set_id
 
-if selected_set_id and not selected_set_name:
+if selected_set_id and not selected_set_name_display:
     for name, sid in set_options.items():
         if sid == selected_set_id:
-            selected_set_name = name
-            st.session_state["selected_set_name"] = name
+            selected_set_name_display = name
+            st.session_state["selected_set_name_display"] = name
             break
 
-current_set_name = selected_set_name or "(미선택)"
+current_set_name = selected_set_name_display or "(미선택)"
 st.markdown('<div class="wp-header-marker"></div>', unsafe_allow_html=True)
 header_info, header_logout = st.columns([10, 3], gap="small")
 with header_info:
@@ -473,7 +475,7 @@ with sets_list_tab:
     st.subheader("세트 목록")
 
     selected_set_id = st.session_state.get("selected_set_id")
-    selected_set_name = None
+    selected_set_name_display = st.session_state.get("selected_set_name_display")
     try:
         user_pref = st.session_state.get("user_pref")
         if user_pref is None:
@@ -493,16 +495,17 @@ with sets_list_tab:
     if selected_set_id:
         for name, sid in set_options.items():
             if sid == selected_set_id:
-                selected_set_name = name
+                selected_set_name_display = name
                 break
 
     if set_names:
         index = 0
-        if selected_set_name and selected_set_name in set_names:
-            index = set_names.index(selected_set_name)
+        if selected_set_name_display and selected_set_name_display in set_names:
+            index = set_names.index(selected_set_name_display)
         selected_set_name = st.selectbox("세트 선택", options=set_names, index=index, key="selected_set_name")
         selected_set_id_new = set_options.get(selected_set_name)
         st.session_state["selected_set_id"] = selected_set_id_new
+        st.session_state["selected_set_name_display"] = selected_set_name
         try:
             _upsert_user_pref(
                 client,
@@ -519,6 +522,7 @@ with sets_list_tab:
         st.info("아직 세트가 없습니다. '세트 추가' 탭에서 새 세트를 추가하세요.")
         st.session_state.pop("selected_set_id", None)
         st.session_state.pop("selected_set_name", None)
+        st.session_state.pop("selected_set_name_display", None)
 
     selected_set_id = st.session_state.get("selected_set_id")
     if selected_set_id:
@@ -910,25 +914,21 @@ with flash_random_tab:
 
     if st.session_state.get("fcr_set_id") != selected_set_id:
         st.session_state["fcr_set_id"] = selected_set_id
-        st.session_state["fcr_index"] = 0
         st.session_state["fcr_revealed"] = False
+        st.session_state.pop("fcr_history", None)
+        st.session_state.pop("fcr_pos", None)
+        st.session_state.pop("fcr_index", None)
         st.session_state.pop("fcr_tts_word_id", None)
         st.session_state.pop("fcr_tts_lang", None)
         st.session_state.pop("fcr_tts_audio", None)
         try:
-            _words = _load_words_oldest(client, set_id=selected_set_id)
-            _shuffled = list(_words)
-            random.shuffle(_shuffled)
-            st.session_state["fcr_words"] = _shuffled
+            st.session_state["fcr_words"] = list(_load_words_oldest(client, set_id=selected_set_id))
         except Exception as e:
             st.error(_to_error_message(e))
             st.session_state["fcr_words"] = []
     elif "fcr_words" not in st.session_state:
         try:
-            _words = _load_words_oldest(client, set_id=selected_set_id)
-            _shuffled = list(_words)
-            random.shuffle(_shuffled)
-            st.session_state["fcr_words"] = _shuffled
+            st.session_state["fcr_words"] = list(_load_words_oldest(client, set_id=selected_set_id))
         except Exception as e:
             st.error(_to_error_message(e))
             st.session_state["fcr_words"] = []
@@ -938,11 +938,27 @@ with flash_random_tab:
         st.info("이 세트에는 아직 단어가 없습니다.")
         st.stop()
 
-    fcr_index = int(st.session_state.get("fcr_index", 0) or 0)
+    history = st.session_state.get("fcr_history")
+    if not isinstance(history, list) or not history:
+        start_index = secrets.randbelow(len(words_r))
+        history = [start_index]
+        st.session_state["fcr_history"] = history
+        st.session_state["fcr_pos"] = 0
+
+    fcr_pos = int(st.session_state.get("fcr_pos", 0) or 0)
+    if fcr_pos < 0:
+        fcr_pos = 0
+    if fcr_pos >= len(history):
+        fcr_pos = len(history) - 1
+    st.session_state["fcr_pos"] = fcr_pos
+
+    fcr_index = int(history[fcr_pos] or 0)
     if fcr_index < 0:
         fcr_index = 0
     if fcr_index >= len(words_r):
         fcr_index = len(words_r) - 1
+    history[fcr_pos] = fcr_index
+    st.session_state["fcr_history"] = history
     st.session_state["fcr_index"] = fcr_index
 
     current_r = words_r[fcr_index]
@@ -1005,7 +1021,9 @@ with flash_random_tab:
     col_prev_r, col_answer_r, col_next_r = st.columns(3)
     with col_prev_r:
         if st.button("이전", key="fcr_prev", use_container_width=True):
-            st.session_state["fcr_index"] = max(0, fcr_index - 1)
+            fcr_pos = int(st.session_state.get("fcr_pos", 0) or 0)
+            if fcr_pos > 0:
+                st.session_state["fcr_pos"] = fcr_pos - 1
             st.session_state["fcr_revealed"] = False
             st.session_state.pop("fcr_tts_word_id", None)
             st.session_state.pop("fcr_tts_lang", None)
@@ -1017,7 +1035,19 @@ with flash_random_tab:
             st.rerun()
     with col_next_r:
         if st.button("다음", key="fcr_next", use_container_width=True):
-            st.session_state["fcr_index"] = min(len(words_r) - 1, fcr_index + 1)
+            history = st.session_state.get("fcr_history") or []
+            fcr_pos = int(st.session_state.get("fcr_pos", 0) or 0)
+            if fcr_pos < len(history) - 1:
+                st.session_state["fcr_pos"] = fcr_pos + 1
+            else:
+                if len(words_r) <= 1:
+                    next_index = 0
+                else:
+                    r = secrets.randbelow(len(words_r) - 1)
+                    next_index = r + 1 if r >= fcr_index else r
+                history.append(next_index)
+                st.session_state["fcr_history"] = history
+                st.session_state["fcr_pos"] = len(history) - 1
             st.session_state["fcr_revealed"] = False
             st.session_state.pop("fcr_tts_word_id", None)
             st.session_state.pop("fcr_tts_lang", None)
