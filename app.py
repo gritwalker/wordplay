@@ -286,6 +286,21 @@ def _tts_mp3_bytes(text: str, lang: str) -> bytes:
     return fp.getvalue()
 
 
+def _guess_tts_lang(text: str) -> str:
+    s = (text or "").strip()
+    if not s:
+        return "en"
+    for ch in s:
+        code = ord(ch)
+        if 0xAC00 <= code <= 0xD7A3:
+            return "ko"
+        if (0x3040 <= code <= 0x309F) or (0x30A0 <= code <= 0x30FF):
+            return "ja"
+        if 0x4E00 <= code <= 0x9FFF:
+            return "zh-CN"
+    return "en"
+
+
 def _apply_mobile_css() -> None:
     st.markdown(
         """
@@ -737,6 +752,9 @@ with flash_tab:
         st.session_state["fc_set_id"] = selected_set_id
         st.session_state["fc_index"] = 0
         st.session_state["fc_revealed"] = False
+        st.session_state.pop("fc_tts_word_id", None)
+        st.session_state.pop("fc_tts_lang", None)
+        st.session_state.pop("fc_tts_audio", None)
         try:
             st.session_state["fc_words"] = _load_words_oldest(client, set_id=selected_set_id)
         except Exception as e:
@@ -776,6 +794,30 @@ with flash_tab:
         unsafe_allow_html=True,
     )
 
+    user_pref = st.session_state.get("user_pref") or {}
+    saved_tts_lang = None
+    if isinstance(user_pref, dict) and user_pref.get("tts_lang"):
+        saved_tts_lang = str(user_pref.get("tts_lang"))
+    tts_lang = _guess_tts_lang(word_text) or (saved_tts_lang or "en")
+    current_word_id = str(current.get("id") or fc_index)
+
+    if st.button("음성 재생", key="fc_tts_play", use_container_width=True, disabled=not bool(word_text)):
+        try:
+            with st.spinner("음성을 생성 중..."):
+                audio_bytes = _tts_mp3_bytes(text=word_text, lang=tts_lang)
+            st.session_state["fc_tts_word_id"] = current_word_id
+            st.session_state["fc_tts_lang"] = tts_lang
+            st.session_state["fc_tts_audio"] = audio_bytes
+            st.rerun()
+        except Exception as e:
+            st.error(_to_error_message(e))
+
+    active_tts_word_id = st.session_state.get("fc_tts_word_id")
+    active_tts_audio = st.session_state.get("fc_tts_audio")
+    active_tts_lang = st.session_state.get("fc_tts_lang")
+    if active_tts_audio and active_tts_word_id == current_word_id and active_tts_lang == tts_lang:
+        st.audio(active_tts_audio, format="audio/mp3")
+
     show_answer = bool(st.session_state.get("fc_revealed", False))
     if show_answer:
         st.markdown(
@@ -795,6 +837,9 @@ with flash_tab:
         if st.button("이전", key="fc_prev", use_container_width=True):
             st.session_state["fc_index"] = max(0, fc_index - 1)
             st.session_state["fc_revealed"] = False
+            st.session_state.pop("fc_tts_word_id", None)
+            st.session_state.pop("fc_tts_lang", None)
+            st.session_state.pop("fc_tts_audio", None)
             st.rerun()
     with col_answer:
         if st.button("정답", key="fc_answer", use_container_width=True):
@@ -804,6 +849,9 @@ with flash_tab:
         if st.button("다음", key="fc_next", use_container_width=True):
             st.session_state["fc_index"] = min(len(words_fc) - 1, fc_index + 1)
             st.session_state["fc_revealed"] = False
+            st.session_state.pop("fc_tts_word_id", None)
+            st.session_state.pop("fc_tts_lang", None)
+            st.session_state.pop("fc_tts_audio", None)
             st.rerun()
 
 with flash_random_tab:
@@ -817,6 +865,9 @@ with flash_random_tab:
         st.session_state["fcr_set_id"] = selected_set_id
         st.session_state["fcr_index"] = 0
         st.session_state["fcr_revealed"] = False
+        st.session_state.pop("fcr_tts_word_id", None)
+        st.session_state.pop("fcr_tts_lang", None)
+        st.session_state.pop("fcr_tts_audio", None)
         try:
             _words = _load_words_oldest(client, set_id=selected_set_id)
             _shuffled = list(_words)
@@ -862,6 +913,35 @@ with flash_random_tab:
         unsafe_allow_html=True,
     )
 
+    user_pref = st.session_state.get("user_pref") or {}
+    saved_tts_lang = None
+    if isinstance(user_pref, dict) and user_pref.get("tts_lang"):
+        saved_tts_lang = str(user_pref.get("tts_lang"))
+    tts_lang = _guess_tts_lang(word_text_r) or (saved_tts_lang or "en")
+    current_word_id = str(current_r.get("id") or fcr_index)
+
+    if st.button(
+        "음성 재생",
+        key="fcr_tts_play",
+        use_container_width=True,
+        disabled=not bool(word_text_r),
+    ):
+        try:
+            with st.spinner("음성을 생성 중..."):
+                audio_bytes = _tts_mp3_bytes(text=word_text_r, lang=tts_lang)
+            st.session_state["fcr_tts_word_id"] = current_word_id
+            st.session_state["fcr_tts_lang"] = tts_lang
+            st.session_state["fcr_tts_audio"] = audio_bytes
+            st.rerun()
+        except Exception as e:
+            st.error(_to_error_message(e))
+
+    active_tts_word_id = st.session_state.get("fcr_tts_word_id")
+    active_tts_audio = st.session_state.get("fcr_tts_audio")
+    active_tts_lang = st.session_state.get("fcr_tts_lang")
+    if active_tts_audio and active_tts_word_id == current_word_id and active_tts_lang == tts_lang:
+        st.audio(active_tts_audio, format="audio/mp3")
+
     if bool(st.session_state.get("fcr_revealed", False)):
         st.markdown(
             f"""
@@ -880,6 +960,9 @@ with flash_random_tab:
         if st.button("이전", key="fcr_prev", use_container_width=True):
             st.session_state["fcr_index"] = max(0, fcr_index - 1)
             st.session_state["fcr_revealed"] = False
+            st.session_state.pop("fcr_tts_word_id", None)
+            st.session_state.pop("fcr_tts_lang", None)
+            st.session_state.pop("fcr_tts_audio", None)
             st.rerun()
     with col_answer_r:
         if st.button("정답", key="fcr_answer", use_container_width=True):
@@ -889,5 +972,8 @@ with flash_random_tab:
         if st.button("다음", key="fcr_next", use_container_width=True):
             st.session_state["fcr_index"] = min(len(words_r) - 1, fcr_index + 1)
             st.session_state["fcr_revealed"] = False
+            st.session_state.pop("fcr_tts_word_id", None)
+            st.session_state.pop("fcr_tts_lang", None)
+            st.session_state.pop("fcr_tts_audio", None)
             st.rerun()
 
