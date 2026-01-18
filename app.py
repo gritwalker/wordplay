@@ -305,10 +305,24 @@ def _apply_mobile_css() -> None:
     st.markdown(
         """
         <style>
-          .block-container { padding-top: 1rem; padding-bottom: 6.5rem; }
+          .block-container { padding-top: calc(1.5rem + env(safe-area-inset-top)); padding-bottom: 6.5rem; }
           div[data-testid="stForm"] { border: 1px solid rgba(49, 51, 63, 0.2); padding: 0.75rem; border-radius: 0.75rem; }
           div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea, div[data-testid="stSelectbox"] div { font-size: 16px; }
           div[data-testid="stAudio"] { width: 100%; }
+          .wp-header-marker + div[data-testid="stHorizontalBlock"] {
+            align-items: center !important;
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.5rem !important;
+          }
+          .wp-header-text {
+            font-size: 16px;
+            font-weight: 600;
+            opacity: 0.98;
+          }
+          .wp-header-marker + div[data-testid="stHorizontalBlock"] .stButton > button {
+            font-weight: 700;
+            white-space: nowrap !important;
+          }
           .fc-controls-marker + div[data-testid="stHorizontalBlock"],
           .fcr-controls-marker + div[data-testid="stHorizontalBlock"] {
             display: flex !important;
@@ -350,6 +364,7 @@ def _apply_mobile_css() -> None:
           }
           @media (max-width: 640px) {
             .block-container { padding-left: 0.75rem; padding-right: 0.75rem; }
+            .wp-header-text { font-size: 14px; }
             .fc-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button,
             .fcr-controls-marker + div[data-testid="stHorizontalBlock"] .stButton > button {
               padding: 0.45rem 0.25rem;
@@ -365,7 +380,6 @@ def _apply_mobile_css() -> None:
 st.set_page_config(page_title="WordPlay", page_icon="📚", layout="centered")
 _apply_mobile_css()
 
-st.title("WordPlay")
 _maybe_restore_session_from_query_params()
 session = st.session_state.get("sb_session")
 user = _current_user(session)
@@ -405,15 +419,13 @@ if not user:
 
 client = _create_client(session)
 
-header_left, header_right = st.columns([3, 1])
-with header_left:
-    st.caption(f"로그인: {user.get('email')}")
-with header_right:
-    current_set_name = st.session_state.get("selected_set_name")
-    if current_set_name:
-        st.caption(f"세트: {current_set_name}")
-    if st.button("로그아웃", use_container_width=True):
-        _logout()
+try:
+    user_pref = st.session_state.get("user_pref")
+    if user_pref is None:
+        user_pref = _load_user_pref(client, user["id"])
+        st.session_state["user_pref"] = user_pref
+except Exception:
+    user_pref = st.session_state.get("user_pref") or {}
 
 try:
     sets = _load_sets(client)
@@ -423,6 +435,37 @@ except Exception as e:
 
 set_options = {s["name"]: s["id"] for s in sets if s.get("id") and s.get("name")}
 set_names = list(set_options.keys())
+
+selected_set_name = st.session_state.get("selected_set_name")
+selected_set_id = st.session_state.get("selected_set_id")
+pref_set_id = None
+if isinstance(user_pref, dict):
+    pref_set_id = user_pref.get("last_set_id")
+if selected_set_name and selected_set_name in set_options:
+    selected_set_id = set_options[selected_set_name]
+    st.session_state["selected_set_id"] = selected_set_id
+elif not selected_set_id and pref_set_id and pref_set_id in set_options.values():
+    selected_set_id = pref_set_id
+    st.session_state["selected_set_id"] = pref_set_id
+
+if selected_set_id and not selected_set_name:
+    for name, sid in set_options.items():
+        if sid == selected_set_id:
+            selected_set_name = name
+            st.session_state["selected_set_name"] = name
+            break
+
+current_set_name = selected_set_name or "(미선택)"
+st.markdown('<div class="wp-header-marker"></div>', unsafe_allow_html=True)
+header_info, header_logout = st.columns([10, 3], gap="small")
+with header_info:
+    st.markdown(
+        f'<div class="wp-header-text">로그인: {user.get("email")} · 세트: {current_set_name}</div>',
+        unsafe_allow_html=True,
+    )
+with header_logout:
+    if st.button("(로그아웃)", key="logout_btn", use_container_width=True):
+        _logout()
 
 sets_list_tab, sets_add_tab, words_tab, flash_tab, flash_random_tab = st.tabs(["세트 목록", "세트 추가", "단어", "플래시카드", "플래시카드(랜덤)"])
 
@@ -457,10 +500,9 @@ with sets_list_tab:
         index = 0
         if selected_set_name and selected_set_name in set_names:
             index = set_names.index(selected_set_name)
-        selected_set_name = st.selectbox("세트 선택", options=set_names, index=index)
+        selected_set_name = st.selectbox("세트 선택", options=set_names, index=index, key="selected_set_name")
         selected_set_id_new = set_options.get(selected_set_name)
         st.session_state["selected_set_id"] = selected_set_id_new
-        st.session_state["selected_set_name"] = selected_set_name
         try:
             _upsert_user_pref(
                 client,
@@ -801,20 +843,25 @@ with flash_tab:
     tts_lang = _guess_tts_lang(word_text) or (saved_tts_lang or "en")
     current_word_id = str(current.get("id") or fc_index)
 
-    if st.button("음성 재생", key="fc_tts_play", use_container_width=True, disabled=not bool(word_text)):
+    active_tts_word_id = st.session_state.get("fc_tts_word_id")
+    active_tts_audio = st.session_state.get("fc_tts_audio")
+    active_tts_lang = st.session_state.get("fc_tts_lang")
+    need_audio = bool(word_text) and not (
+        active_tts_audio and active_tts_word_id == current_word_id and active_tts_lang == tts_lang
+    )
+    if need_audio:
         try:
-            with st.spinner("음성을 생성 중..."):
+            with st.spinner("음성 준비 중..."):
                 audio_bytes = _tts_mp3_bytes(text=word_text, lang=tts_lang)
             st.session_state["fc_tts_word_id"] = current_word_id
             st.session_state["fc_tts_lang"] = tts_lang
             st.session_state["fc_tts_audio"] = audio_bytes
-            st.rerun()
-        except Exception as e:
-            st.error(_to_error_message(e))
+            active_tts_word_id = current_word_id
+            active_tts_lang = tts_lang
+            active_tts_audio = audio_bytes
+        except Exception:
+            active_tts_audio = None
 
-    active_tts_word_id = st.session_state.get("fc_tts_word_id")
-    active_tts_audio = st.session_state.get("fc_tts_audio")
-    active_tts_lang = st.session_state.get("fc_tts_lang")
     if active_tts_audio and active_tts_word_id == current_word_id and active_tts_lang == tts_lang:
         st.audio(active_tts_audio, format="audio/mp3")
 
@@ -920,25 +967,25 @@ with flash_random_tab:
     tts_lang = _guess_tts_lang(word_text_r) or (saved_tts_lang or "en")
     current_word_id = str(current_r.get("id") or fcr_index)
 
-    if st.button(
-        "음성 재생",
-        key="fcr_tts_play",
-        use_container_width=True,
-        disabled=not bool(word_text_r),
-    ):
+    active_tts_word_id = st.session_state.get("fcr_tts_word_id")
+    active_tts_audio = st.session_state.get("fcr_tts_audio")
+    active_tts_lang = st.session_state.get("fcr_tts_lang")
+    need_audio = bool(word_text_r) and not (
+        active_tts_audio and active_tts_word_id == current_word_id and active_tts_lang == tts_lang
+    )
+    if need_audio:
         try:
-            with st.spinner("음성을 생성 중..."):
+            with st.spinner("음성 준비 중..."):
                 audio_bytes = _tts_mp3_bytes(text=word_text_r, lang=tts_lang)
             st.session_state["fcr_tts_word_id"] = current_word_id
             st.session_state["fcr_tts_lang"] = tts_lang
             st.session_state["fcr_tts_audio"] = audio_bytes
-            st.rerun()
-        except Exception as e:
-            st.error(_to_error_message(e))
+            active_tts_word_id = current_word_id
+            active_tts_lang = tts_lang
+            active_tts_audio = audio_bytes
+        except Exception:
+            active_tts_audio = None
 
-    active_tts_word_id = st.session_state.get("fcr_tts_word_id")
-    active_tts_audio = st.session_state.get("fcr_tts_audio")
-    active_tts_lang = st.session_state.get("fcr_tts_lang")
     if active_tts_audio and active_tts_word_id == current_word_id and active_tts_lang == tts_lang:
         st.audio(active_tts_audio, format="audio/mp3")
 
