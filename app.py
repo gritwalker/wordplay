@@ -467,7 +467,7 @@ with header_logout:
     if st.button("(로그아웃)", key="logout_btn", use_container_width=True):
         _logout()
 
-sets_list_tab, sets_add_tab, words_tab, flash_tab, flash_random_tab = st.tabs(["세트 목록", "세트 추가", "단어", "플래시카드", "플래시카드(랜덤)"])
+sets_list_tab, sets_add_tab, words_tab, flash_tab, flash_random_tab = st.tabs(["세트 목록", "세트 추가", "단어", "카드", "카드(랜덤)"])
 
 with sets_list_tab:
     st.subheader("세트 목록")
