@@ -492,7 +492,7 @@ def _apply_mobile_css() -> None:
     )
 
 
-st.set_page_config(page_title="WordPlay", page_icon="📚", layout="centered")
+st.set_page_config(page_title="Life Writer", page_icon="📚", layout="centered")
 _apply_mobile_css()
 
 _maybe_restore_session_from_query_params()
@@ -500,6 +500,7 @@ session = st.session_state.get("sb_session")
 user = _current_user(session)
 
 if not user:
+    st.title("Life Writer")
     login_tab, signup_tab = st.tabs(["로그인", "회원가입"])
 
     with login_tab:
