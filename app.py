@@ -581,6 +581,28 @@ with header_logout:
     if st.button("(로그아웃)", key="logout_btn", use_container_width=True):
         _logout()
 
+# Browser confirm-based deletion via query params
+qp_delete_kind = _qp_get("delete_kind")
+qp_delete_id = _qp_get("delete_id")
+if qp_delete_kind and qp_delete_id:
+    try:
+        if qp_delete_kind == "diary":
+            _delete_diary(client, qp_delete_id)
+        elif qp_delete_kind == "event":
+            _delete_calendar_event(client, qp_delete_id)
+        elif qp_delete_kind == "memo":
+            _delete_memo(client, qp_delete_id)
+        st.success("삭제했습니다.")
+    except Exception as e:
+        st.error(_to_error_message(e))
+    finally:
+        try:
+            st.query_params.pop("delete_kind", None)
+            st.query_params.pop("delete_id", None)
+        except Exception:
+            pass
+        st.rerun()
+
 sets_list_tab, sets_add_tab, words_tab, flash_tab, flash_random_tab, diary_tab, calendar_tab, memo_tab = st.tabs(["세트 목록", "세트 추가", "단어", "카드", "카드(랜덤)", "일기", "캘린더", "메모"])
 
 with sets_list_tab:
@@ -1202,76 +1224,319 @@ with diary_tab:
         for diary in diaries:
             with st.expander(f"{diary.get('date', '')} - {diary.get('title', '')}", expanded=False):
                 st.write(diary.get("content", ""))
-                
-                if st.button("삭제", key=f"delete_diary_{diary.get('id')}"):
-                    try:
-                        _delete_diary(client, diary["id"])
-                        st.success("일기가 삭제되었습니다.")
+                col_edit_d, col_delete_d = st.columns(2)
+                with col_edit_d:
+                    if st.button("수정", key=f"edit_diary_{diary.get('id')}", use_container_width=True):
+                        st.session_state[f"editing_diary_{diary.get('id')}"] = True
                         st.rerun()
-                    except Exception as e:
-                        st.error(_to_error_message(e))
+                with col_delete_d:
+                    if st.button("삭제", key=f"delete_diary_{diary.get('id')}", use_container_width=True):
+                        try:
+                            _delete_diary(client, diary["id"])
+                            st.success("일기가 삭제되었습니다.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(_to_error_message(e))
+                if st.session_state.get(f"editing_diary_{diary.get('id')}"):
+                    import datetime
+                    with st.form(f"edit_diary_form_{diary.get('id')}", clear_on_submit=False):
+                        new_title = st.text_input("제목", value=diary.get("title") or "")
+                        default_date = None
+                        try:
+                            default_date = datetime.date.fromisoformat(str(diary.get("date") or today))
+                        except Exception:
+                            default_date = today
+                        new_date = st.date_input("날짜", value=default_date)
+                        new_content = st.text_area("내용", value=diary.get("content") or "", height=200)
+                        save = st.form_submit_button("수정 저장", use_container_width=True)
+                        cancel = st.form_submit_button("취소", use_container_width=True)
+                    if cancel:
+                        st.session_state.pop(f"editing_diary_{diary.get('id')}", None)
+                        st.rerun()
+                    if save:
+                        if not (new_title.strip() and new_content.strip()):
+                            st.error("제목과 내용을 입력해주세요.")
+                        else:
+                            try:
+                                _update_diary(client, diary["id"], new_title, new_content, str(new_date))
+                                st.success("수정했습니다.")
+                                st.session_state.pop(f"editing_diary_{diary.get('id')}", None)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(_to_error_message(e))
 
 
 with calendar_tab:
     st.subheader("캘린더")
     
-    # 현재 월 표시
+    # 현재 월 관리
     import datetime
     today = datetime.date.today()
-    current_month = st.selectbox(
-        "월 선택",
-        options=[f"{today.year}-{i:02d}" for i in range(1, 13)],
-        index=today.month - 1
-    )
     
-    # 이벤트 추가 폼
-    with st.form("calendar_event_form", clear_on_submit=True):
-        event_title = st.text_input("일정 제목")
-        event_date = st.date_input("날짜")
-        event_content = st.text_area("내용", height=120)
-        event_submit = st.form_submit_button("일정 추가", use_container_width=True)
+    # 현재 월 상태 관리
+    if "current_calendar_month" not in st.session_state:
+        st.session_state.current_calendar_month = today.replace(day=1)
     
-    if event_submit:
-        if not event_title.strip():
-            st.error("일정 제목을 입력해주세요.")
-        else:
-            try:
-                _create_calendar_event(client, user["id"], event_title, event_content, str(event_date))
-                st.success("일정이 추가되었습니다!")
-                st.rerun()
-            except Exception as e:
-                st.error(_to_error_message(e))
+    current_month = st.session_state.current_calendar_month
     
-    # 일정 목록
-    st.divider()
-    st.subheader("일정 목록")
+    # 날짜 클릭으로 폼 열기 (쿼리파라미터 이용)
+    try:
+        qp_date = _qp_get("calendar_date")
+        if qp_date:
+            selected = datetime.date.fromisoformat(str(qp_date))
+            st.session_state.selected_calendar_date = selected
+            st.session_state.show_event_form = True
+    except Exception:
+        pass
     
+    # 월 네비게이션
+    col_prev, col_title, col_next = st.columns([1, 3, 1])
+    with col_prev:
+        if st.button("◀ 이전달", key="prev_month", use_container_width=True):
+            if current_month.month == 1:
+                st.session_state.current_calendar_month = current_month.replace(year=current_month.year - 1, month=12)
+            else:
+                st.session_state.current_calendar_month = current_month.replace(month=current_month.month - 1)
+            st.rerun()
+    
+    with col_title:
+        st.markdown(f"<h3 style='text-align: center; margin: 0;'>{current_month.year}년 {current_month.month}월</h3>", 
+                   unsafe_allow_html=True)
+    
+    with col_next:
+        if st.button("다음달 ▶", key="next_month", use_container_width=True):
+            if current_month.month == 12:
+                st.session_state.current_calendar_month = current_month.replace(year=current_month.year + 1, month=1)
+            else:
+                st.session_state.current_calendar_month = current_month.replace(month=current_month.month + 1)
+            st.rerun()
+    
+    # 달력 생성
+    first_day = current_month.replace(day=1)
+    last_day = (first_day.replace(month=first_day.month % 12 + 1, day=1) 
+                if first_day.month < 12 
+                else first_day.replace(year=first_day.year + 1, month=1, day=1)) - datetime.timedelta(days=1)
+    
+    # 주 시작 (일요일)
+    start_offset = (first_day.weekday() + 1) % 7
+    
+    # 달력 그리드
+    days_in_month = (last_day - first_day).days + 1
+    calendar_grid = []
+    
+    # 빈 칸 채우기
+    for i in range(start_offset):
+        calendar_grid.append(None)
+    
+    # 날짜 채우기
+    for day in range(1, days_in_month + 1):
+        date = current_month.replace(day=day)
+        calendar_grid.append(date)
+    
+    # 주말까지 빈 칸 채우기
+    while len(calendar_grid) % 7 != 0:
+        calendar_grid.append(None)
+    
+    # 일정 로드
     try:
         events = _load_calendar_events(client, user["id"])
     except Exception as e:
         st.error(_to_error_message(e))
         events = []
     
+    # 현재 월의 일정만 필터링
+    current_month_str = f"{current_month.year}-{current_month.month:02d}"
+    month_events = {}
+    for event in events:
+        event_date_str = event.get("date", "")
+        if event_date_str.startswith(current_month_str):
+            day = int(event_date_str.split("-")[2])
+            if day not in month_events:
+                month_events[day] = []
+            month_events[day].append(event)
+    
+    # 달력 표시
+    st.markdown("""
+    <style>
+    .calendar-day {
+        border: none;
+        padding: 2px;
+        min-height: 0;
+        position: relative;
+        background: transparent;
+    }
+    .calendar-day.today {
+        background: transparent;
+        outline: none;
+    }
+    .calendar-day.weekend {
+        background: transparent;
+    }
+    .calendar-day.empty {
+        background: transparent;
+    }
+    .event-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background-color: #ff6b6b;
+        border-radius: 50%;
+        margin-right: 2px;
+    }
+    .add-event-btn {
+        position: absolute;
+        bottom: 4px;
+        right: 4px;
+        font-size: 12px;
+        padding: 2px 4px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 요일 헤더
+    weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+    cols = st.columns(7)
+    for i, col in enumerate(cols):
+        with col:
+            day_name = weekdays[i]
+            color = "#ff6b6b" if i >= 5 else "inherit"  # 주말은 빨간색
+            st.markdown(f"<div style='text-align: center; color: {color}; font-weight: bold;'>{day_name}</div>", 
+                       unsafe_allow_html=True)
+    
+    # 달력 날짜 표시
+    for week_start in range(0, len(calendar_grid), 7):
+        week_days = calendar_grid[week_start:week_start + 7]
+        cols = st.columns(7)
+        
+        for i, (col, date) in enumerate(zip(cols, week_days)):
+            with col:
+                if date is None:
+                    # 빈 칸
+                    st.markdown("<div class='calendar-day empty'></div>", unsafe_allow_html=True)
+                else:
+                    # 날짜 칸
+                    is_today = date == today
+                    is_weekend = (i == 0 or i == 6)
+                    
+                    day_class = "calendar-day"
+                    if is_today:
+                        day_class += " today"
+                    if is_weekend:
+                        day_class += " weekend"
+                    
+                    # 해당 날짜의 일정
+                    day_events = month_events.get(date.day, [])
+                    
+                    st.markdown(f"<div class='{day_class}'>", unsafe_allow_html=True)
+                    
+                    # 날짜 표시 (클릭하여 일정 추가)
+                    date_color = "#ff6b6b" if (i == 0 or i == 6) else "inherit"
+                    st.markdown(
+                        f"<a href='?calendar_date={date.isoformat()}' "
+                        f"style='display:inline-block;font-weight:bold;color:{date_color};text-decoration:none;'>"
+                        f"{date.day}</a>",
+                        unsafe_allow_html=True,
+                    )
+                    
+                    # 일정 표시
+                    for event in day_events:
+                        event_title = event.get("title", "")
+                        if len(event_title) > 12:
+                            event_title = event_title[:10] + "..."
+                        st.markdown(f"<div style='font-size: 11px; margin: 2px 0;'>• {event_title}</div>", 
+                                   unsafe_allow_html=True)
+                    
+                    # 일정 추가 버튼 제거 (날짜 클릭으로 대체)
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # 일정 추가 폼 (날짜 클릭 시 나타남)
+    if st.session_state.get("show_event_form"):
+        st.divider()
+        st.subheader(f"일정 추가 - {st.session_state.selected_calendar_date}")
+        
+        with st.form("calendar_event_form", clear_on_submit=True):
+            event_title = st.text_input("일정 제목")
+            event_content = st.text_area("내용", height=100)
+            col1, col2 = st.columns(2)
+            with col1:
+                submit_btn = st.form_submit_button("일정 추가", use_container_width=True)
+            with col2:
+                cancel_btn = st.form_submit_button("취소", use_container_width=True)
+            
+            if cancel_btn:
+                st.session_state.show_event_form = False
+                st.rerun()
+            
+            if submit_btn:
+                if not event_title.strip():
+                    st.error("일정 제목을 입력해주세요.")
+                else:
+                    try:
+                        _create_calendar_event(client, user["id"], event_title, event_content, 
+                                              str(st.session_state.selected_calendar_date))
+                        st.success("일정이 추가되었습니다!")
+                        st.session_state.show_event_form = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(_to_error_message(e))
+    
+    # 일정 목록 (아래에 표시)
+    st.divider()
+    st.subheader("일정 목록")
+    
     if not events:
         st.info("아직 등록된 일정이 없습니다.")
     else:
-        # 선택한 월의 일정만 필터링
-        month_events = [e for e in events if e.get("date", "").startswith(current_month)]
+        # 현재 월의 일정만 필터링
+        current_month_events = [e for e in events if e.get("date", "").startswith(current_month_str)]
         
-        if not month_events:
-            st.info(f"{current_month}월에는 등록된 일정이 없습니다.")
+        if not current_month_events:
+            st.info(f"{current_month.month}월에는 등록된 일정이 없습니다.")
         else:
-            for event in month_events:
+            for event in current_month_events:
                 with st.expander(f"{event.get('date', '')} - {event.get('title', '')}", expanded=False):
                     st.write(event.get("content", ""))
-                    
-                    if st.button("삭제", key=f"delete_event_{event.get('id')}"):
-                        try:
-                            _delete_calendar_event(client, event["id"])
-                            st.success("일정이 삭제되었습니다.")
+                    col_edit_e, col_delete_e = st.columns(2)
+                    with col_edit_e:
+                        if st.button("수정", key=f"edit_event_{event.get('id')}", use_container_width=True):
+                            st.session_state[f"editing_event_{event.get('id')}"] = True
                             st.rerun()
-                        except Exception as e:
-                            st.error(_to_error_message(e))
+                    with col_delete_e:
+                        if st.button("삭제", key=f"delete_event_{event.get('id')}", use_container_width=True):
+                            try:
+                                _delete_calendar_event(client, event["id"])
+                                st.success("일정이 삭제되었습니다.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(_to_error_message(e))
+                    if st.session_state.get(f"editing_event_{event.get('id')}"):
+                        import datetime
+                        with st.form(f"edit_event_form_{event.get('id')}", clear_on_submit=False):
+                            new_title = st.text_input("일정 제목", value=event.get("title") or "")
+                            default_date = None
+                            try:
+                                default_date = datetime.date.fromisoformat(str(event.get("date") or today))
+                            except Exception:
+                                default_date = today
+                            new_date = st.date_input("날짜", value=default_date)
+                            new_content = st.text_area("내용", value=event.get("content") or "", height=120)
+                            save = st.form_submit_button("수정 저장", use_container_width=True)
+                            cancel = st.form_submit_button("취소", use_container_width=True)
+                        if cancel:
+                            st.session_state.pop(f"editing_event_{event.get('id')}", None)
+                            st.rerun()
+                        if save:
+                            if not new_title.strip():
+                                st.error("일정 제목을 입력해주세요.")
+                            else:
+                                try:
+                                    _update_calendar_event(client, event["id"], new_title, new_content, str(new_date))
+                                    st.success("수정했습니다.")
+                                    st.session_state.pop(f"editing_event_{event.get('id')}", None)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(_to_error_message(e))
 
 
 with memo_tab:
@@ -1308,13 +1573,38 @@ with memo_tab:
         for memo in memos:
             with st.expander(f"{memo.get('title', '제목 없음')} - {memo.get('created_at', '')[:10]}", expanded=False):
                 st.write(memo.get("content", ""))
-                
-                if st.button("삭제", key=f"delete_memo_{memo.get('id')}"):
-                    try:
-                        _delete_memo(client, memo["id"])
-                        st.success("메모가 삭제되었습니다.")
+                col_edit_m, col_delete_m = st.columns(2)
+                with col_edit_m:
+                    if st.button("수정", key=f"edit_memo_{memo.get('id')}", use_container_width=True):
+                        st.session_state[f"editing_memo_{memo.get('id')}"] = True
                         st.rerun()
-                    except Exception as e:
-                        st.error(_to_error_message(e))
+                with col_delete_m:
+                    if st.button("삭제", key=f"delete_memo_{memo.get('id')}", use_container_width=True):
+                        try:
+                            _delete_memo(client, memo["id"])
+                            st.success("메모가 삭제되었습니다.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(_to_error_message(e))
+                if st.session_state.get(f"editing_memo_{memo.get('id')}"):
+                    with st.form(f"edit_memo_form_{memo.get('id')}", clear_on_submit=False):
+                        new_title = st.text_input("제목", value=memo.get("title") or "")
+                        new_content = st.text_area("내용", value=memo.get("content") or "", height=250)
+                        save = st.form_submit_button("수정 저장", use_container_width=True)
+                        cancel = st.form_submit_button("취소", use_container_width=True)
+                    if cancel:
+                        st.session_state.pop(f"editing_memo_{memo.get('id')}", None)
+                        st.rerun()
+                    if save:
+                        if not new_content.strip():
+                            st.error("내용을 입력해주세요.")
+                        else:
+                            try:
+                                _update_memo(client, memo["id"], new_title or "제목 없음", new_content)
+                                st.success("수정했습니다.")
+                                st.session_state.pop(f"editing_memo_{memo.get('id')}", None)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(_to_error_message(e))
 
 
