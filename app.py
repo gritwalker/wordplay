@@ -5,6 +5,7 @@ import random
 import secrets
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.parse
 
 import streamlit as st
 from gtts import gTTS
@@ -1360,7 +1361,8 @@ with calendar_tab:
     <style>
     .calendar-day {
         border: none;
-        padding: 2px;
+        border-radius: 0;
+        padding: 6px;
         min-height: 0;
         position: relative;
         background: transparent;
@@ -1374,6 +1376,19 @@ with calendar_tab:
     }
     .calendar-day.empty {
         background: transparent;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
+        height: 0 !important;
+        line-height: 0 !important;
+        pointer-events: none !important;
+    }
+    .calendar-header-cell {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+        padding-bottom: 6px;
     }
     .event-dot {
         display: inline-block;
@@ -1390,22 +1405,49 @@ with calendar_tab:
         font-size: 12px;
         padding: 2px 4px;
     }
+    .cal-header-marker + div[data-testid="stHorizontalBlock"],
+    .cal-week-marker + div[data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: stretch !important;
+        gap: 6px !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+    .cal-header-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"],
+    .cal-week-marker + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        min-width: 0 !important;
+        flex: 0 0 calc(100% / 7) !important;
+        width: calc(100% / 7) !important;
+        max-width: calc(100% / 7) !important;
+    }
+    @media (max-width: 640px) {
+      .cal-header-marker + div[data-testid="stHorizontalBlock"],
+      .cal-week-marker + div[data-testid="stHorizontalBlock"] {
+        gap: 4px !important;
+      }
+      .calendar-header-cell { padding-bottom: 4px; }
+      .calendar-day { padding: 4px; }
+    }
     </style>
     """, unsafe_allow_html=True)
     
     # 요일 헤더
     weekdays = ["일", "월", "화", "수", "목", "금", "토"]
+    st.markdown('<div class="cal-header-marker"></div>', unsafe_allow_html=True)
     cols = st.columns(7)
     for i, col in enumerate(cols):
         with col:
             day_name = weekdays[i]
             color = "#ff6b6b" if i >= 5 else "inherit"  # 주말은 빨간색
-            st.markdown(f"<div style='text-align: center; color: {color}; font-weight: bold;'>{day_name}</div>", 
+            st.markdown(f"<div class='calendar-header-cell' style='text-align: center; color: {color}; font-weight: bold;'>{day_name}</div>", 
                        unsafe_allow_html=True)
     
     # 달력 날짜 표시
     for week_start in range(0, len(calendar_grid), 7):
         week_days = calendar_grid[week_start:week_start + 7]
+        st.markdown('<div class="cal-week-marker"></div>', unsafe_allow_html=True)
         cols = st.columns(7)
         
         for i, (col, date) in enumerate(zip(cols, week_days)):
@@ -1431,12 +1473,10 @@ with calendar_tab:
                     
                     # 날짜 표시 (클릭하여 일정 추가)
                     date_color = "#ff6b6b" if (i == 0 or i == 6) else "inherit"
-                    st.markdown(
-                        f"<a href='?calendar_date={date.isoformat()}' "
-                        f"style='display:inline-block;font-weight:bold;color:{date_color};text-decoration:none;'>"
-                        f"{date.day}</a>",
-                        unsafe_allow_html=True,
-                    )
+                    if st.button(f"{date.day}", key=f"select_date_{date.isoformat()}", use_container_width=True):
+                        st.session_state.selected_calendar_date = date
+                        st.session_state.show_event_form = True
+                        st.rerun()
                     
                     # 일정 표시
                     for event in day_events:
