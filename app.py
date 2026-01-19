@@ -1363,11 +1363,25 @@ with calendar_tab:
     .calendar-day {
         border: none;
         border-radius: 0;
-        padding: 6px;
+        padding: 1px;
         min-height: 0;
         position: relative;
         background: transparent;
     }
+    .calendar-day .stButton { margin: 0 !important; width: auto !important; display: inline-block !important; padding: 0 !important; }
+    .calendar-day .stButton > button {
+        padding: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+        line-height: 1 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        color: inherit !important;
+        width: auto !important;
+    }
+    .calendar-day.weekend .stButton > button { color: #ff6b6b !important; }
     .calendar-day.today {
         background: transparent;
         outline: none;
@@ -1389,7 +1403,7 @@ with calendar_tab:
     }
     .calendar-header-cell {
         border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-        padding-bottom: 6px;
+        padding-bottom: 4px;
     }
     .event-dot {
         display: inline-block;
@@ -1412,7 +1426,7 @@ with calendar_tab:
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         align-items: stretch !important;
-        gap: 6px !important;
+        gap: 2px !important;
         width: 100% !important;
         margin: 0 !important;
     }
@@ -1429,7 +1443,8 @@ with calendar_tab:
         gap: 4px !important;
       }
       .calendar-header-cell { padding-bottom: 4px; }
-      .calendar-day { padding: 4px; }
+      .calendar-day { padding: 2px; }
+      .calendar-day .stButton > button { padding: 1px 0 !important; font-size: 14px; }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1474,7 +1489,7 @@ with calendar_tab:
                     
                     # 날짜 표시 (클릭하여 일정 추가)
                     date_color = "#ff6b6b" if (i == 0 or i == 6) else "inherit"
-                    if st.button(f"{date.day}", key=f"select_date_{date.isoformat()}", use_container_width=True):
+                    if st.button(f"{date.day}", key=f"select_date_{date.isoformat()}"):
                         st.session_state.selected_calendar_date = date
                         st.session_state.show_event_form = True
                         st.rerun()
