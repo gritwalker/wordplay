@@ -281,6 +281,118 @@ def _upsert_user_pref(
     _execute(res)
 
 
+def _load_diaries(client: Client, user_id: str) -> List[Dict[str, Any]]:
+    res = (
+        client.table("diaries")
+        .select("id,title,content,date,created_at,updated_at")
+        .eq("user_id", user_id)
+        .order("date", desc=True)
+        .execute()
+    )
+    return _execute(res) or []
+
+
+def _create_diary(client: Client, user_id: str, title: str, content: str, date: str) -> None:
+    payload: Dict[str, Any] = {
+        "user_id": user_id,
+        "title": title.strip(),
+        "content": content.strip(),
+        "date": date
+    }
+    res = client.table("diaries").insert(payload).execute()
+    _execute(res)
+
+
+def _update_diary(client: Client, diary_id: str, title: str, content: str, date: str) -> None:
+    payload: Dict[str, Any] = {
+        "title": title.strip(),
+        "content": content.strip(),
+        "date": date,
+        "updated_at": "now()"
+    }
+    res = client.table("diaries").update(payload).eq("id", diary_id).execute()
+    _execute(res)
+
+
+def _delete_diary(client: Client, diary_id: str) -> None:
+    res = client.table("diaries").delete().eq("id", diary_id).execute()
+    _execute(res)
+
+
+def _load_calendar_events(client: Client, user_id: str) -> List[Dict[str, Any]]:
+    res = (
+        client.table("calendar_events")
+        .select("id,title,content,date,created_at,updated_at")
+        .eq("user_id", user_id)
+        .order("date", desc=True)
+        .execute()
+    )
+    return _execute(res) or []
+
+
+def _create_calendar_event(client: Client, user_id: str, title: str, content: str, date: str) -> None:
+    payload: Dict[str, Any] = {
+        "user_id": user_id,
+        "title": title.strip(),
+        "content": content.strip(),
+        "date": date
+    }
+    res = client.table("calendar_events").insert(payload).execute()
+    _execute(res)
+
+
+def _update_calendar_event(client: Client, event_id: str, title: str, content: str, date: str) -> None:
+    payload: Dict[str, Any] = {
+        "title": title.strip(),
+        "content": content.strip(),
+        "date": date,
+        "updated_at": "now()"
+    }
+    res = client.table("calendar_events").update(payload).eq("id", event_id).execute()
+    _execute(res)
+
+
+def _delete_calendar_event(client: Client, event_id: str) -> None:
+    res = client.table("calendar_events").delete().eq("id", event_id).execute()
+    _execute(res)
+
+
+def _load_memos(client: Client, user_id: str) -> List[Dict[str, Any]]:
+    res = (
+        client.table("memos")
+        .select("id,title,content,created_at,updated_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return _execute(res) or []
+
+
+def _create_memo(client: Client, user_id: str, title: str, content: str) -> None:
+    payload: Dict[str, Any] = {
+        "user_id": user_id,
+        "title": title.strip(),
+        "content": content.strip()
+    }
+    res = client.table("memos").insert(payload).execute()
+    _execute(res)
+
+
+def _update_memo(client: Client, memo_id: str, title: str, content: str) -> None:
+    payload: Dict[str, Any] = {
+        "title": title.strip(),
+        "content": content.strip(),
+        "updated_at": "now()"
+    }
+    res = client.table("memos").update(payload).eq("id", memo_id).execute()
+    _execute(res)
+
+
+def _delete_memo(client: Client, memo_id: str) -> None:
+    res = client.table("memos").delete().eq("id", memo_id).execute()
+    _execute(res)
+
+
 @st.cache_data(show_spinner=False)
 def _tts_mp3_bytes(text: str, lang: str) -> bytes:
     fp = BytesIO()
@@ -469,7 +581,7 @@ with header_logout:
     if st.button("(로그아웃)", key="logout_btn", use_container_width=True):
         _logout()
 
-sets_list_tab, sets_add_tab, words_tab, flash_tab, flash_random_tab = st.tabs(["세트 목록", "세트 추가", "단어", "카드", "카드(랜덤)"])
+sets_list_tab, sets_add_tab, words_tab, flash_tab, flash_random_tab, diary_tab, calendar_tab, memo_tab = st.tabs(["세트 목록", "세트 추가", "단어", "카드", "카드(랜덤)", "일기", "캘린더", "메모"])
 
 with sets_list_tab:
     st.subheader("세트 목록")
@@ -1053,4 +1165,156 @@ with flash_random_tab:
             st.session_state.pop("fcr_tts_lang", None)
             st.session_state.pop("fcr_tts_audio", None)
             st.rerun()
+
+
+with diary_tab:
+    st.subheader("일기 작성")
+    
+    with st.form("diary_form", clear_on_submit=True):
+        title = st.text_input("제목")
+        date = st.date_input("날짜")
+        content = st.text_area("내용", height=200)
+        submit = st.form_submit_button("일기 저장", use_container_width=True)
+    
+    if submit:
+        if not title.strip() or not content.strip():
+            st.error("제목과 내용을 입력해주세요.")
+        else:
+            try:
+                _create_diary(client, user["id"], title, content, str(date))
+                st.success("일기가 저장되었습니다!")
+                st.rerun()
+            except Exception as e:
+                st.error(_to_error_message(e))
+    
+    st.divider()
+    st.subheader("일기 목록")
+    
+    try:
+        diaries = _load_diaries(client, user["id"])
+    except Exception as e:
+        st.error(_to_error_message(e))
+        diaries = []
+    
+    if not diaries:
+        st.info("아직 작성된 일기가 없습니다.")
+    else:
+        for diary in diaries:
+            with st.expander(f"{diary.get('date', '')} - {diary.get('title', '')}", expanded=False):
+                st.write(diary.get("content", ""))
+                
+                if st.button("삭제", key=f"delete_diary_{diary.get('id')}"):
+                    try:
+                        _delete_diary(client, diary["id"])
+                        st.success("일기가 삭제되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(_to_error_message(e))
+
+
+with calendar_tab:
+    st.subheader("캘린더")
+    
+    # 현재 월 표시
+    import datetime
+    today = datetime.date.today()
+    current_month = st.selectbox(
+        "월 선택",
+        options=[f"{today.year}-{i:02d}" for i in range(1, 13)],
+        index=today.month - 1
+    )
+    
+    # 이벤트 추가 폼
+    with st.form("calendar_event_form", clear_on_submit=True):
+        event_title = st.text_input("일정 제목")
+        event_date = st.date_input("날짜")
+        event_content = st.text_area("내용", height=120)
+        event_submit = st.form_submit_button("일정 추가", use_container_width=True)
+    
+    if event_submit:
+        if not event_title.strip():
+            st.error("일정 제목을 입력해주세요.")
+        else:
+            try:
+                _create_calendar_event(client, user["id"], event_title, event_content, str(event_date))
+                st.success("일정이 추가되었습니다!")
+                st.rerun()
+            except Exception as e:
+                st.error(_to_error_message(e))
+    
+    # 일정 목록
+    st.divider()
+    st.subheader("일정 목록")
+    
+    try:
+        events = _load_calendar_events(client, user["id"])
+    except Exception as e:
+        st.error(_to_error_message(e))
+        events = []
+    
+    if not events:
+        st.info("아직 등록된 일정이 없습니다.")
+    else:
+        # 선택한 월의 일정만 필터링
+        month_events = [e for e in events if e.get("date", "").startswith(current_month)]
+        
+        if not month_events:
+            st.info(f"{current_month}월에는 등록된 일정이 없습니다.")
+        else:
+            for event in month_events:
+                with st.expander(f"{event.get('date', '')} - {event.get('title', '')}", expanded=False):
+                    st.write(event.get("content", ""))
+                    
+                    if st.button("삭제", key=f"delete_event_{event.get('id')}"):
+                        try:
+                            _delete_calendar_event(client, event["id"])
+                            st.success("일정이 삭제되었습니다.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(_to_error_message(e))
+
+
+with memo_tab:
+    st.subheader("메모 작성")
+    
+    with st.form("memo_form", clear_on_submit=True):
+        memo_title = st.text_input("제목")
+        memo_content = st.text_area("내용", height=250)
+        memo_submit = st.form_submit_button("메모 저장", use_container_width=True)
+    
+    if memo_submit:
+        if not memo_content.strip():
+            st.error("내용을 입력해주세요.")
+        else:
+            try:
+                _create_memo(client, user["id"], memo_title or "제목 없음", memo_content)
+                st.success("메모가 저장되었습니다!")
+                st.rerun()
+            except Exception as e:
+                st.error(_to_error_message(e))
+    
+    st.divider()
+    st.subheader("메모 목록")
+    
+    try:
+        memos = _load_memos(client, user["id"])
+    except Exception as e:
+        st.error(_to_error_message(e))
+        memos = []
+    
+    if not memos:
+        st.info("아직 작성된 메모가 없습니다.")
+    else:
+        for memo in memos:
+            with st.expander(f"{memo.get('title', '제목 없음')} - {memo.get('created_at', '')[:10]}", expanded=False):
+                st.write(memo.get("content", ""))
+                
+                if st.button("삭제", key=f"delete_memo_{memo.get('id')}"):
+                    try:
+                        _delete_memo(client, memo["id"])
+                        st.success("메모가 삭제되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(_to_error_message(e))
+
 
